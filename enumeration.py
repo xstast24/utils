@@ -2,6 +2,8 @@ class Enumeration:
     """
     Helps to make (lightweight) work with custom enum classes easier.
     This class is intended to be subclassed by custom enum classes. Example: class WorkDays(Enumeration)
+    Enum values in custom subclass should be defined as class variables, e.g.:
+    var1 = "Monday", var2 = 500, var3 = 0.1
     This class doesn't interfere with Python's Enum class namespace, but watch out for typos/confusion.
     """
     _enum_values = []
@@ -27,14 +29,27 @@ class Enumeration:
         return cls._enum_values
 
     @classmethod
-    def contains(cls, item, refresh=False):
+    def contains(cls, item, refresh=False, ignore_case=False):
         """
         Check if given item (value) is contained in enum.
-        :param item - check if enum contains this item
-        :param refresh - set True to refresh/reload current enum values (if enum changes dynamically)
+        :param item: check if enum contains this item
+        :param refresh: set True to refresh/reload current enum values (if enum changes dynamically)
+        :param ignore_case: If True, string item is compared with enum values regardless of lower/upper case
+            letters. If False, strings are compared strictly and must have the same case.
         :return True if enum contains the item, False otherwise
         """
-        return True if item in cls.enum_values(refresh=refresh) else False
+        # TODO comparison using unicodedata NFKD normalization
+        if (ignore_case is True) and isinstance(item, str):
+            item = item.lower()
+            for value in cls.enum_values(refresh=refresh):
+                if isinstance(value, str) and (item == value.lower()):
+                    # item matched a value
+                    return True
+
+            # item did not match any value
+            return False
+        else:
+            return True if item in cls.enum_values(refresh=refresh) else False
 
 
 """ USAGE EXAMPLE """
@@ -59,9 +74,9 @@ if __name__ == '__main__':
         else:
             print("Stay at home. It is " + my_day)
 
-    # check if enum contains an item
-    my_day = 'Friday'
-    if WorkDay.contains(my_day):
+    # check if enum contains an item, ignore lower/upper case letters
+    my_day = 'friDAY'
+    if WorkDay.contains(my_day, ignore_case=True):
         print("Go to work. It is " + my_day)
     else:
         print("Stay at home. It is " + my_day)
