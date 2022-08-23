@@ -74,28 +74,66 @@ def count_file_lines(file_path):
         return -1
 
 
-def wait_for(condition, *args, expected_value=True, timeout=10, period=1, **kwargs):
+def _wait_for_variable(condition: Any, expected_value: Any, end_time: float, period: float):
     """
-    Wait for condition to have expected value. Condition is checked periodically until timeout is reached.
+    Same as 'wait_for', but only supports variable conditions (non-callable). The 'end_time' [timestamp] is the time when waiting is ended.
+    :return: 1) True if condition passed under given timeout, False otherwise, 2) latest value of the condition
+    """
+    latest_value = condition
+    while time.time() < end_time:
+        if latest_value == expected_value:
+            return True, latest_value
+
+        time.sleep(period)
+        latest_value = condition
+
+    return False, latest_value
+
+
+def _wait_for_callable(condition: Callable, args: list, kwargs: dict, expected_value: Any, end_time: float, period: float):
+    """
+    Same as 'wait_for', but only supports callable conditions. The 'end_time' [timestamp] is the time when waiting is ended.
+    :return: 1) True if condition passed under given timeout, False otherwise, 2) latest value of the condition
+    """
+    latest_value = condition(*args, **kwargs)
+    while time.time() < end_time:
+        if (latest_value) == expected_value:
+            return True, latest_value
+        time.sleep(period)
+        latest_value = condition(*args, **kwargs)
+
+    return False, latest_value
+
+
+def wait_for(condition: Any, args: Optional[list] = None, kwargs: Optional[dict] = None, expected_value: Any = True,
+             timeout: float = 10, period: float = 1, raise_exc: bool = False) -> bool:
+    """
+    Wait for any condition (variable/callable) to have the expected value. Condition is checked periodically until the timeout is reached.
     :param condition: variable or callable object that is checked
-    :param args: args for callable condition
+    :param args: args for callable condition (all in a single list)
+    :param kwargs: kwargs for callable condition (all in a single dict)
     :param expected_value: desired value of the condition
-    :param timeout: (float) [seconds] max wait time
-    :param period: (float) [seconds] interval to periodically check condition
-    :param kwargs: kwargs for callable condition
-    :return: (bool) True if condition passed under given timeout, otherwise False
-    example: wait_for(math.is_close, my_var, 42, abs_tol=0.01, expected_value=True, timeout=5, period=0.2)
+    :param timeout: [seconds] max wait time
+    :param period: [seconds] interval to periodically check condition
+    :param raise_exc: if waiting is not successful -> raise TimeoutError exception (instead of returning "False")
+    :return: True if condition passed under given timeout, False otherwise
+    Examples: wait_for(lambda: os.path.exists(path))  # wait for file existence (using lambda), return False if not created
+              wait_for(math.is_close, args=[my_var, 42], kwargs={'abs_tol': 0.01}, expected_value=True, timeout=5, period=0.2)
+              wait_for(os.path.exists, args=[path], raise_exc=True)  # wait for file existence (using a callable with args),
+                                                                     raise TimeoutError if file hasn't been created in time
     """
     end_time = time.time() + timeout
-    is_callable = callable(condition)
-    while time.time() < end_time:
-        if is_callable and condition(*args, **kwargs) == expected_value:  # condition is a callable -> call the function with given args and check its return value
-            return True
-        elif condition == expected_value:  # is non-callable object -> check value of the object
-            return True
-        time.sleep(period)
+    if callable(condition):
+        args = args if args else []
+        kwargs = kwargs if kwargs else {}
+        result, last_value = _wait_for_callable(condition, args, kwargs, expected_value, end_time, period)
+    else:
+        result, last_value = _wait_for_variable(condition, expected_value, end_time, period)
 
-    return False
+    if result is False and raise_exc:
+        raise TimeoutError(f'Condition not fulfilled in time:\nExpected value: {expected_value}\nActual value: {last_value}')
+
+    return result
 
 
 """ EXAMPLE USAGE """
